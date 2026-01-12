@@ -63,7 +63,7 @@ const createBithumbSignature = (endpoint, params = {}) => {
   }
 
   const timestamp = Date.now();
-  const queryString = new URLSearchParams({ ...params, endpoint }).toString();
+  const queryString = new URLSearchParams(params).toString();
   const hmacData = `${endpoint}\x00${queryString}\x00${timestamp}`;
 
   const signature = crypto
