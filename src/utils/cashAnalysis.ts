@@ -656,6 +656,44 @@ const CATEGORY_ALLOCATION: Record<string, { min: number; max: number; descriptio
   speculative: { min: 1, max: 5, description: '투기 자산 - 고위험 고수익, 최소 비중' },
 };
 
+// 카테고리별 리밸런싱 임계값 (변동성 기반)
+// - core: 안정적인 자산이므로 더 넓은 허용 범위 (3%)
+// - major: 검증된 프로젝트로 중간 허용 범위 (2.5%)
+// - growth: 성장 자산으로 기본 허용 범위 (2%)
+// - speculative: 고변동성 자산이므로 더 엄격한 관리 (1.5%)
+const VOLATILITY_ADJUSTED_THRESHOLDS: Record<string, number> = {
+  core: 3.0,
+  major: 2.5,
+  growth: 2.0,
+  speculative: 1.5,
+};
+
+/**
+ * 자산의 카테고리를 반환합니다.
+ * @param symbol 자산 심볼 (예: 'BTC', 'ETH')
+ * @returns 자산 카테고리 ('core' | 'major' | 'growth' | 'speculative')
+ */
+export const getAssetCategory = (symbol: string): 'core' | 'major' | 'growth' | 'speculative' => {
+  const characteristics = ASSET_CHARACTERISTICS[symbol];
+  return characteristics?.category || 'speculative';
+};
+
+/**
+ * 변동성 조정 리밸런싱 임계값을 반환합니다.
+ * 자산 카테고리에 따라 다른 임계값을 적용하여 불필요한 거래를 줄입니다.
+ * - Core 자산 (BTC, ETH): ±3% - 안정적이므로 넓은 허용 범위
+ * - Major 자산 (XRP, ADA, LINK): ±2.5% - 검증된 프로젝트
+ * - Growth 자산 (SOL, AVAX, DOT, MATIC): ±2% - 기본 허용 범위
+ * - Speculative 자산 (DOGE 등): ±1.5% - 고변동성으로 엄격한 관리
+ *
+ * @param symbol 자산 심볼 (예: 'BTC', 'ETH')
+ * @returns 리밸런싱 임계값 (퍼센트)
+ */
+export const getVolatilityAdjustedThreshold = (symbol: string): number => {
+  const category = getAssetCategory(symbol);
+  return VOLATILITY_ADJUSTED_THRESHOLDS[category] || 2.0;
+};
+
 export const generateAssetTargetRationale = (
   symbol: string,
   targetPercent: number,

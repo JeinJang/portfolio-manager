@@ -235,17 +235,19 @@ export const bithumbApi = {
 // Unified Exchange Interface
 // ============================================
 
-export type ExchangeType = 'upbit' | 'bithumb';
+// 거래 API를 지원하는 거래소 타입 (현재 upbit, bithumb만 지원)
+// 전체 ExchangeType은 types/index.ts에 정의됨
+export type SupportedTradingExchange = 'upbit' | 'bithumb';
 
 export const exchangeApi = {
-  getBalances: async (exchange: ExchangeType): Promise<ExchangeBalance[]> => {
+  getBalances: async (exchange: SupportedTradingExchange): Promise<ExchangeBalance[]> => {
     if (exchange === 'upbit') return upbitApi.getBalances();
     if (exchange === 'bithumb') return bithumbApi.getBalances();
     throw new Error(`Unsupported exchange: ${exchange}`);
   },
 
   marketBuy: async (
-    exchange: ExchangeType,
+    exchange: SupportedTradingExchange,
     symbol: string,
     amount: number
   ): Promise<TradeResult> => {
@@ -259,7 +261,7 @@ export const exchangeApi = {
   },
 
   marketSell: async (
-    exchange: ExchangeType,
+    exchange: SupportedTradingExchange,
     symbol: string,
     volume: number
   ): Promise<TradeResult> => {

@@ -301,7 +301,7 @@ export const useMarketData = (
 // Portfolio Local Storage Hook
 // ============================================
 
-import type { Asset, CashHolding } from "../types";
+import type { Asset, CashHolding, ExchangeType } from "../types";
 
 export const usePortfolioStorage = (key: string = "portfolio") => {
   const [portfolio, setPortfolio] = useState<Asset[]>(() => {
@@ -371,20 +371,34 @@ export const useCashStorage = (key: string = "cash") => {
 
 import { checkExchangeConnection } from "../services/exchangeApi";
 
+// 모든 거래소 타입에 대한 연결 상태
+type ExchangeStatusMap = Record<ExchangeType, boolean>;
+
+const DEFAULT_EXCHANGE_STATUS: ExchangeStatusMap = {
+  upbit: false,
+  bithumb: false,
+  binance: false,
+  coinbase: false,
+  stock_kr: false,
+  stock_us: false,
+};
+
 export const useExchangeStatus = (refreshInterval: number = 120000) => {
-  const [status, setStatus] = useState<{ upbit: boolean; bithumb: boolean }>({
-    upbit: false,
-    bithumb: false,
-  });
+  const [status, setStatus] = useState<ExchangeStatusMap>(DEFAULT_EXCHANGE_STATUS);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     const checkStatus = async () => {
       try {
         const result = await checkExchangeConnection();
-        setStatus(result);
+        // 지원되는 거래소(upbit, bithumb) 상태만 업데이트
+        setStatus(prev => ({
+          ...prev,
+          upbit: result.upbit,
+          bithumb: result.bithumb,
+        }));
       } catch {
-        setStatus({ upbit: false, bithumb: false });
+        setStatus(DEFAULT_EXCHANGE_STATUS);
       } finally {
         setLoading(false);
       }

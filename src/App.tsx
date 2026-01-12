@@ -25,6 +25,7 @@ import {
   calculateRecommendedCashAllocation,
   INDICATOR_LABELS,
   generateAssetTargetRationale,
+  getVolatilityAdjustedThreshold,
 } from "./utils/cashAnalysis";
 import {
   COLORS,
@@ -334,6 +335,14 @@ export default function App() {
     [currency, rate]
   );
 
+  // 지원되는 거래소 타입 (API 거래 가능)
+  const SUPPORTED_EXCHANGES = ['upbit', 'bithumb'] as const;
+  type SupportedExchange = typeof SUPPORTED_EXCHANGES[number];
+
+  const isSupportedExchange = (exchange: ExchangeType): exchange is SupportedExchange => {
+    return SUPPORTED_EXCHANGES.includes(exchange as SupportedExchange);
+  };
+
   // Execute rebalancing
   const handleExecuteRebalance = async (
     action: TradeAction,
@@ -341,6 +350,11 @@ export default function App() {
     exchange: ExchangeType,
     amount: number
   ) => {
+    if (!isSupportedExchange(exchange)) {
+      alert(`${EXCHANGES[exchange]?.nameKo || exchange}는 아직 자동 거래를 지원하지 않습니다.`);
+      return;
+    }
+
     if (!exchangeStatus[exchange]) {
       alert(
         `${EXCHANGES[exchange]?.nameKo} API 연결이 필요합니다.\n.env 파일에 API 키를 설정해주세요.`
@@ -1243,13 +1257,15 @@ export default function App() {
     const actions = calc.assets.map((a) => {
       const t = TARGET[a.symbol] || 0;
       const d = t - (a.allocation || 0);
+      const threshold = getVolatilityAdjustedThreshold(a.symbol);
       return {
         ...a,
         target: t,
         diff: d,
+        threshold,
         val: (d / 100) * calc.totalValue,
         amt: ((d / 100) * calc.totalValue) / (a.currentPrice || 1),
-        action: (d > 2 ? "BUY" : d < -2 ? "SELL" : "HOLD") as TradeAction,
+        action: (d > threshold ? "BUY" : d < -threshold ? "SELL" : "HOLD") as TradeAction,
       };
     });
 
@@ -1510,6 +1526,18 @@ export default function App() {
                       {formatPercent(a.diff)}
                     </span>
                   </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                    }}
+                    title={`±${a.threshold}% 초과 시 리밸런싱 트리거`}
+                  >
+                    <span>임계값</span>
+                    <span>±{a.threshold}%</span>
+                  </div>
                   {a.action !== "HOLD" && (
                     <>
                       <div
@@ -1534,7 +1562,7 @@ export default function App() {
                           {fmt(Math.abs(a.val))}
                         </span>
                       </div>
-                      {exchangeStatus[a.exchange] && (
+                      {isSupportedExchange(a.exchange) && exchangeStatus[a.exchange] && (
                         <button
                           onClick={() =>
                             handleExecuteRebalance(
