@@ -44,7 +44,12 @@ export interface UseValuationRiskReturn {
 export interface MarketDataInput {
   fearGreed?: number;
   kimchiPremium?: number;
-  prices: Record<string, { price: number; ma200?: number }>;
+  prices: Record<string, { price: number; ma50?: number; ma200?: number }>;
+  sentiment?: Record<string, {
+    socialSentiment: number;
+    newsScore: number;
+    fundingRate: number;
+  }>;
 }
 
 // ============================================
@@ -86,9 +91,11 @@ export const useValuationRisk = (
 
       // First, calculate BTC valuation (primary data source)
       const btcPrice = marketData.prices[BTC_SYMBOL]?.price || 0;
+      const btcSentiment = marketData.sentiment?.[BTC_SYMBOL];
       const btcInput: ValuationInputData = {
         symbol: BTC_SYMBOL,
         currentPrice: btcPrice,
+        ma50: marketData.prices[BTC_SYMBOL]?.ma50,
         ma200: marketData.prices[BTC_SYMBOL]?.ma200,
         mvrv: onchainData?.mvrv,
         nvt: onchainData?.nvt,
@@ -97,6 +104,20 @@ export const useValuationRisk = (
         activeAddresses: onchainData?.activeAddresses,
         fearGreed: marketData.fearGreed,
         kimchiPremium: marketData.kimchiPremium,
+        sentiment: btcSentiment ? {
+          socialVolume: 0,
+          socialSentiment: btcSentiment.socialSentiment,
+          twitterMentions: 0,
+          redditActivity: 0,
+          newsScore: btcSentiment.newsScore,
+          newsVolume: 0,
+          fundingRate: btcSentiment.fundingRate,
+          openInterest: 0,
+          longShortRatio: 1,
+          largeTransactions: 0,
+          whaleAccumulation: 0,
+          timestamp: new Date(),
+        } : undefined,
       };
 
       // Calculate BTC result first
@@ -109,7 +130,9 @@ export const useValuationRisk = (
         if (symbol === BTC_SYMBOL) continue;
 
         const assetPrice = marketData.prices[symbol]?.price || 0;
+        const assetMa50 = marketData.prices[symbol]?.ma50;
         const assetMa200 = marketData.prices[symbol]?.ma200;
+        const assetSentiment = marketData.sentiment?.[symbol];
 
         // Skip if no price data
         if (assetPrice === 0) continue;
@@ -123,6 +146,8 @@ export const useValuationRisk = (
             assetPrice,
             assetMa200
           );
+          // Add MA50 and sentiment to estimated input
+          altcoinInput.ma50 = assetMa50;
         } else {
           // Fallback to minimal data
           altcoinInput = getDefaultAltcoinValuation(
@@ -130,6 +155,26 @@ export const useValuationRisk = (
             assetPrice,
             marketData.fearGreed
           );
+          altcoinInput.ma50 = assetMa50;
+          altcoinInput.ma200 = assetMa200;
+        }
+
+        // Add sentiment if available
+        if (assetSentiment) {
+          altcoinInput.sentiment = {
+            socialVolume: 0,
+            socialSentiment: assetSentiment.socialSentiment,
+            twitterMentions: 0,
+            redditActivity: 0,
+            newsScore: assetSentiment.newsScore,
+            newsVolume: 0,
+            fundingRate: assetSentiment.fundingRate,
+            openInterest: 0,
+            longShortRatio: 1,
+            largeTransactions: 0,
+            whaleAccumulation: 0,
+            timestamp: new Date(),
+          };
         }
 
         newResults[symbol] = calculateValuationRisk(altcoinInput);

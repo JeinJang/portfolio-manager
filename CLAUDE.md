@@ -62,7 +62,11 @@ Use this pattern before calling exchangeApi methods.
 | `src/App.tsx` | Main component, rebalancing UI, trade execution |
 | `src/hooks/useMarketData.ts` | Data fetching hooks, exchange status |
 | `src/hooks/useValuationRisk.ts` | React hooks for valuation risk calculation |
+| `src/hooks/useMovingAverages.ts` | MA50/MA200 data fetching with caching |
+| `src/hooks/useSentiment.ts` | Social sentiment data with auto-refresh |
 | `src/services/exchangeApi.ts` | Upbit/Bithumb API wrapper |
+| `src/services/historicalData.ts` | Historical OHLCV, moving average calculations |
+| `src/services/sentimentApi.ts` | Multi-source sentiment (Santiment/LunarCrush/fallback) |
 | `src/types/index.ts` | TypeScript type definitions |
 
 ### Analysis Indicators
@@ -133,7 +137,31 @@ npm run build        # Production build
 npm run server       # Backend API proxy
 ```
 
+## Environment Variables
+
+See `.env.example` for full configuration.
+
+**Required** (for exchange trading):
+- `UPBIT_ACCESS_KEY`, `UPBIT_SECRET_KEY`
+- `BITHUMB_API_KEY`, `BITHUMB_SECRET_KEY`
+
+**Optional** (for enhanced data):
+- `VITE_SANTIMENT_API_KEY` - Sentiment data (falls back to estimation if missing)
+- `VITE_LUNARCRUSH_API_KEY` - Sentiment data (falls back to estimation if missing)
+- `GLASSNODE_API_KEY`, `CRYPTOQUANT_API_KEY` - On-chain data
+
 ## Recent Changes
+
+### 2026-01-13: Sentiment & Moving Averages Services
+- Added `src/services/historicalData.ts` - Fetches OHLCV from Binance/CoinGecko, calculates MA50/MA200
+- Added `src/services/sentimentApi.ts` - Multi-source sentiment (Santiment > LunarCrush > estimation fallback)
+- Added `src/hooks/useMovingAverages.ts` - React hook with 6-hour cache, batch processing
+- Added `src/hooks/useSentiment.ts` - React hook with 15-min cache, auto-refresh
+- **Key Features:**
+  - LocalStorage caching with TTL (6h for MA, 15min for sentiment)
+  - Batch processing with rate limit delays (5 symbols/batch, 1.5s delay)
+  - BTC-priority fetching for dependent calculations
+  - Graceful fallback: sentiment estimation from Fear & Greed + exchange flow
 
 ### 2025-01-13: Valuation Risk Module & UI
 - Added `src/utils/valuationRisk.ts` - Multi-timeframe valuation risk assessment

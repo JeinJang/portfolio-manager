@@ -24,6 +24,8 @@ import {
   useValuationRisk,
   usePortfolioValuationSummary,
 } from "./hooks/useValuationRisk";
+import { useMovingAverages } from "./hooks/useMovingAverages";
+import { useSentiment } from "./hooks/useSentiment";
 import type { ValuationRiskLevel } from "./utils/valuationRisk";
 import { useRealPortfolio } from "./hooks/useExchangeBalances";
 import {
@@ -308,6 +310,30 @@ export default function App() {
   const { data: onchainData } = useBTCOnchain(100000);
   const { status: exchangeStatus } = useExchangeStatus(120000);
 
+  // Moving averages data for valuation risk
+  const {
+    data: maData,
+    loading: maLoading,
+  } = useMovingAverages(marketSymbols, market.prices, {
+    refreshInterval: 300000, // 5 minutes
+    delayInitialFetch: true,
+  });
+
+  // Sentiment data for valuation risk
+  const {
+    data: sentimentData,
+    loading: sentimentLoading,
+  } = useSentiment(
+    marketSymbols,
+    market.prices,
+    onchainData,
+    market.fearGreed?.value,
+    {
+      refreshInterval: 900000, // 15 minutes
+      delayInitialFetch: true,
+    }
+  );
+
   const loading = portfolioLoading || marketLoading;
 
   // Calculate portfolio metrics
@@ -334,16 +360,33 @@ export default function App() {
     [market.fearGreed, onchainData, market.onchain, avgPremium]
   );
 
-  // Valuation risk analysis
+  // Valuation risk analysis with MA data and sentiment
   const valuationMarketData = useMemo(
     () => ({
       fearGreed: market.fearGreed?.value,
       kimchiPremium: avgPremium,
       prices: Object.fromEntries(
-        Object.entries(market.prices).map(([k, v]) => [k, { price: v.price }])
+        Object.entries(market.prices).map(([k, v]) => [
+          k,
+          {
+            price: v.price,
+            ma50: maData[k]?.ma50,
+            ma200: maData[k]?.ma200,
+          },
+        ])
+      ),
+      sentiment: Object.fromEntries(
+        Object.entries(sentimentData).map(([k, v]) => [
+          k,
+          {
+            socialSentiment: v.social.sentiment * 100, // -100 to +100
+            newsScore: v.news.score * 100,             // -100 to +100
+            fundingRate: 0.01, // Placeholder - would need derivatives API
+          },
+        ])
       ),
     }),
-    [market.fearGreed, avgPremium, market.prices]
+    [market.fearGreed, avgPremium, market.prices, maData, sentimentData]
   );
 
   const {

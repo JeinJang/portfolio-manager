@@ -116,35 +116,42 @@ export interface ValuationInputData {
 // ============================================
 
 // Timeframe-specific metric weights
+// Updated with sentiment metrics for comprehensive analysis
 export const TIMEFRAME_WEIGHTS: Record<
   ValuationTimeframe,
   Record<string, number>
 > = {
   // Short-term (1-7 days): Focus on momentum and sentiment
+  // Sentiment is highly relevant for short-term movements
   short: {
-    priceVsMa50: 0.25,
-    exchangeNetflow: 0.20,
-    fearGreed: 0.20,
-    kimchiPremium: 0.15,
-    activeAddressRatio: 0.10,
-    fundingRate: 0.10,
+    priceVsMa50: 0.20,           // Technical momentum
+    exchangeNetflow: 0.15,       // On-chain flow
+    fearGreed: 0.15,             // Market sentiment
+    kimchiPremium: 0.10,         // Korean market heat
+    activeAddressRatio: 0.10,    // Network activity
+    socialSentiment: 0.15,       // Social media sentiment (NEW)
+    fundingRate: 0.15,           // Derivatives sentiment (NEW)
   },
   // Medium-term (1-4 weeks): Balance of technicals and fundamentals
+  // Moderate sentiment influence
   medium: {
-    mvrv: 0.25,
-    priceVsMa200: 0.20,
-    nvt: 0.15,
-    exchangeNetflow: 0.15,
-    fearGreed: 0.15,
-    socialSentiment: 0.10,
+    mvrv: 0.22,                  // On-chain valuation
+    priceVsMa200: 0.18,          // Long-term trend
+    nvt: 0.15,                   // Network valuation
+    exchangeNetflow: 0.12,       // Flow dynamics
+    fearGreed: 0.13,             // Market mood
+    socialSentiment: 0.10,       // Social trends (NEW)
+    newsSentiment: 0.10,         // News sentiment (NEW)
   },
   // Long-term (1-6 months): Focus on fundamentals and cycle position
+  // Sentiment has minimal weight for long-term
   long: {
-    mvrv: 0.30,
-    nvt: 0.20,
-    cyclePosition: 0.20,
-    priceVsMa200: 0.15,
-    realizedPriceRatio: 0.15,
+    mvrv: 0.28,                  // Primary valuation metric
+    nvt: 0.18,                   // Network fundamentals
+    cyclePosition: 0.18,         // Market cycle
+    priceVsMa200: 0.14,          // Long-term technical
+    realizedPriceRatio: 0.14,    // Cost basis analysis
+    socialSentiment: 0.08,       // Long-term social trend (NEW)
   },
 };
 
@@ -240,23 +247,116 @@ const adjustMetricByBeta = (
 };
 
 // ============================================
-// Mock Sentiment Data (for future API integration)
+// Sentiment Analysis Functions
 // ============================================
 
-export const getMockSentimentData = (_symbol: string): SentimentData => ({
-  socialVolume: 50,
-  socialSentiment: 0,
-  twitterMentions: 1000,
-  redditActivity: 500,
-  newsScore: 0,
-  newsVolume: 50,
-  fundingRate: 0.01,
-  openInterest: 1000000000,
-  longShortRatio: 1.0,
-  largeTransactions: 100,
-  whaleAccumulation: 0,
-  timestamp: new Date(),
-});
+/**
+ * Analyze social sentiment for valuation
+ * socialSentiment ranges from -100 (extreme fear) to +100 (extreme greed)
+ */
+export const analyzeSocialSentimentValuation = (
+  sentiment: number
+): MetricAnalysis => {
+  // Normalize from -100 to +100 → 0 to 1
+  const normalizedScore = (sentiment + 100) / 200;
+
+  let reason: string;
+  if (sentiment <= -60) {
+    reason = `소셜 센티먼트 ${sentiment.toFixed(0)} - 극단적 공포, 축적 기회`;
+  } else if (sentiment <= -20) {
+    reason = `소셜 센티먼트 ${sentiment.toFixed(0)} - 부정적 분위기`;
+  } else if (sentiment <= 20) {
+    reason = `소셜 센티먼트 ${sentiment.toFixed(0)} - 중립`;
+  } else if (sentiment <= 60) {
+    reason = `소셜 센티먼트 ${sentiment.toFixed(0)} - 긍정적 분위기, 주의`;
+  } else {
+    reason = `소셜 센티먼트 ${sentiment.toFixed(0)} - 극단적 탐욕, 고평가 위험`;
+  }
+
+  return {
+    name: 'socialSentiment',
+    nameKo: '소셜 센티먼트',
+    value: sentiment,
+    normalizedScore: clamp01(normalizedScore),
+    weight: 0,
+    confidence: 1.0,
+    reason,
+  };
+};
+
+/**
+ * Analyze news sentiment for valuation
+ * newsScore ranges from -100 to +100
+ */
+export const analyzeNewsSentimentValuation = (
+  newsScore: number
+): MetricAnalysis => {
+  // Normalize from -100 to +100 → 0 to 1
+  const normalizedScore = (newsScore + 100) / 200;
+
+  let reason: string;
+  if (newsScore <= -50) {
+    reason = `뉴스 센티먼트 ${newsScore.toFixed(0)} - 매우 부정적`;
+  } else if (newsScore <= -20) {
+    reason = `뉴스 센티먼트 ${newsScore.toFixed(0)} - 부정적`;
+  } else if (newsScore <= 20) {
+    reason = `뉴스 센티먼트 ${newsScore.toFixed(0)} - 중립`;
+  } else if (newsScore <= 50) {
+    reason = `뉴스 센티먼트 ${newsScore.toFixed(0)} - 긍정적`;
+  } else {
+    reason = `뉴스 센티먼트 ${newsScore.toFixed(0)} - 매우 긍정적, 과열 주의`;
+  }
+
+  return {
+    name: 'newsSentiment',
+    nameKo: '뉴스 센티먼트',
+    value: newsScore,
+    normalizedScore: clamp01(normalizedScore),
+    weight: 0,
+    confidence: 0.8,
+    reason,
+  };
+};
+
+/**
+ * Analyze funding rate for short-term sentiment
+ * Positive = longs paying shorts = bullish sentiment = overheated
+ * Negative = shorts paying longs = bearish sentiment
+ */
+export const analyzeFundingRateValuation = (
+  fundingRate: number
+): MetricAnalysis => {
+  // Typical range: -0.1% to +0.1%
+  let normalizedScore: number;
+  let reason: string;
+
+  if (fundingRate < -0.05) {
+    normalizedScore = 0.1;
+    reason = `펀딩비 ${(fundingRate * 100).toFixed(3)}% - 극단적 숏 포지션, 반등 가능`;
+  } else if (fundingRate < 0) {
+    normalizedScore = 0.3;
+    reason = `펀딩비 ${(fundingRate * 100).toFixed(3)}% - 약세 심리`;
+  } else if (fundingRate < 0.03) {
+    normalizedScore = 0.5;
+    reason = `펀딩비 ${(fundingRate * 100).toFixed(3)}% - 정상 범위`;
+  } else if (fundingRate < 0.08) {
+    normalizedScore = 0.75;
+    reason = `펀딩비 ${(fundingRate * 100).toFixed(3)}% - 롱 과열`;
+  } else {
+    normalizedScore = 0.9;
+    reason = `펀딩비 ${(fundingRate * 100).toFixed(3)}% - 극단적 롱 과열, 조정 위험`;
+  }
+
+  return {
+    name: 'fundingRate',
+    nameKo: '펀딩비',
+    value: fundingRate,
+    normalizedScore,
+    weight: 0,
+    confidence: 1.0,
+    reason,
+  };
+};
 
 // ============================================
 // Individual Analysis Functions
@@ -780,6 +880,36 @@ export const calculateTimeframeAssessment = (
   if (weights.realizedPriceRatio && input.realizedPrice) {
     const analysis = analyzeRealizedPriceRatio(input.currentPrice, input.realizedPrice);
     analysis.weight = weights.realizedPriceRatio;
+    metrics.push(analysis);
+    weightedScore += analysis.normalizedScore * analysis.weight * analysis.confidence;
+    weightedConfidence += analysis.weight * analysis.confidence;
+    totalWeight += analysis.weight;
+  }
+
+  // Social Sentiment (from sentiment API)
+  if (weights.socialSentiment && input.sentiment?.socialSentiment !== undefined) {
+    const analysis = analyzeSocialSentimentValuation(input.sentiment.socialSentiment);
+    analysis.weight = weights.socialSentiment;
+    metrics.push(analysis);
+    weightedScore += analysis.normalizedScore * analysis.weight * analysis.confidence;
+    weightedConfidence += analysis.weight * analysis.confidence;
+    totalWeight += analysis.weight;
+  }
+
+  // News Sentiment
+  if (weights.newsSentiment && input.sentiment?.newsScore !== undefined) {
+    const analysis = analyzeNewsSentimentValuation(input.sentiment.newsScore);
+    analysis.weight = weights.newsSentiment;
+    metrics.push(analysis);
+    weightedScore += analysis.normalizedScore * analysis.weight * analysis.confidence;
+    weightedConfidence += analysis.weight * analysis.confidence;
+    totalWeight += analysis.weight;
+  }
+
+  // Funding Rate
+  if (weights.fundingRate && input.sentiment?.fundingRate !== undefined) {
+    const analysis = analyzeFundingRateValuation(input.sentiment.fundingRate);
+    analysis.weight = weights.fundingRate;
     metrics.push(analysis);
     weightedScore += analysis.normalizedScore * analysis.weight * analysis.confidence;
     weightedConfidence += analysis.weight * analysis.confidence;
