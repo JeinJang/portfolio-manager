@@ -58,8 +58,10 @@ Use this pattern before calling exchangeApi methods.
 | File | Purpose |
 |------|---------|
 | `src/utils/cashAnalysis.ts` | Indicator analysis, cash allocation, asset categorization |
+| `src/utils/valuationRisk.ts` | Multi-timeframe valuation risk assessment |
 | `src/App.tsx` | Main component, rebalancing UI, trade execution |
 | `src/hooks/useMarketData.ts` | Data fetching hooks, exchange status |
+| `src/hooks/useValuationRisk.ts` | React hooks for valuation risk calculation |
 | `src/services/exchangeApi.ts` | Upbit/Bithumb API wrapper |
 | `src/types/index.ts` | TypeScript type definitions |
 
@@ -75,6 +77,38 @@ Weighted scoring system (`cashAnalysis.ts:12-20`):
 - Volatility (VIX): 15%
 
 Score maps to risk levels: AGGRESSIVE (10% cash) -> PRESERVATION (55% cash)
+
+### Valuation Risk Analysis
+
+Multi-timeframe overvaluation assessment (`src/utils/valuationRisk.ts`):
+
+**9 Metrics:**
+- MVRV, NVT, Price vs MA50/MA200, Exchange Netflow
+- Fear & Greed, Kimchi Premium, Active Address Ratio
+- Cycle Position, Realized Price Ratio
+
+**Timeframe Weights:**
+| Timeframe | Weight | Focus |
+|-----------|--------|-------|
+| Short (1-7d) | 20% | Momentum, sentiment |
+| Medium (1-4w) | 35% | Technicals + fundamentals |
+| Long (1-6mo) | 45% | Fundamentals, cycle position |
+
+**Category Thresholds:**
+| Category | MVRV Overbought | Beta to BTC |
+|----------|-----------------|-------------|
+| Core | 3.5 | 1.0 |
+| Major | 3.0 | 1.3 |
+| Growth | 2.5 | 1.6 |
+| Speculative | 2.0 | 2.0 |
+
+Risk levels: UNDERVALUED → FAIR_VALUE → ELEVATED → OVERVALUED → EXTREME
+
+**React Hook** (`src/hooks/useValuationRisk.ts`):
+```typescript
+const { results, btcResult, getAssetRisk } = useValuationRisk(assets, onchainData, marketData);
+const summary = usePortfolioValuationSummary(results, assets);
+```
 
 ## Common Patterns
 
@@ -100,6 +134,13 @@ npm run server       # Backend API proxy
 ```
 
 ## Recent Changes
+
+### 2025-01-13: Valuation Risk Module
+- Added `src/utils/valuationRisk.ts` - Multi-timeframe valuation risk assessment
+- Added `src/hooks/useValuationRisk.ts` - React hooks for integration
+- 9 metrics: MVRV, NVT, MA deviation, exchange flow, sentiment, premium, active addresses, cycle position, realized price
+- Category-based thresholds with BTC correlation estimation for altcoins
+- Risk levels: UNDERVALUED → FAIR_VALUE → ELEVATED → OVERVALUED → EXTREME
 
 ### 2025-01-12: Volatility-Adjusted Rebalancing
 - Added `getVolatilityAdjustedThreshold()` function
