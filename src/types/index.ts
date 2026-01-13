@@ -193,7 +193,7 @@ export interface TradeResult {
 // UI Types
 // ============================================
 
-export type TabType = 'overview' | 'macro' | 'onchain' | 'rebalance' | 'settings';
+export type TabType = 'overview' | 'macro' | 'valuation' | 'rebalance' | 'settings';
 
 export interface ChartDataPoint {
   name: string;

@@ -135,12 +135,21 @@ npm run server       # Backend API proxy
 
 ## Recent Changes
 
-### 2025-01-13: Valuation Risk Module
+### 2025-01-13: Valuation Risk Module & UI
 - Added `src/utils/valuationRisk.ts` - Multi-timeframe valuation risk assessment
 - Added `src/hooks/useValuationRisk.ts` - React hooks for integration
 - 9 metrics: MVRV, NVT, MA deviation, exchange flow, sentiment, premium, active addresses, cycle position, realized price
 - Category-based thresholds with BTC correlation estimation for altcoins
 - Risk levels: UNDERVALUED → FAIR_VALUE → ELEVATED → OVERVALUED → EXTREME
+- **UI Integration** (App.tsx +730 lines):
+  - Added "밸류에이션" tab to navigation
+  - Portfolio composite score gauge (SVG arc with gradient)
+  - Risk distribution visualization (5 risk level bars)
+  - Timeframe cards (short/medium/long-term breakdown)
+  - Key drivers panel (top 5 factors with direction indicators)
+  - AI recommendation box (action + urgency)
+  - Asset valuation table (per-asset risk breakdown)
+  - Hooks wired at app level (lines 338-358)
 
 ### 2025-01-12: Volatility-Adjusted Rebalancing
 - Added `getVolatilityAdjustedThreshold()` function

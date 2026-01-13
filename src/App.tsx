@@ -20,6 +20,11 @@ import {
   useExchangeStatus,
   useBTCOnchain,
 } from "./hooks/useMarketData";
+import {
+  useValuationRisk,
+  usePortfolioValuationSummary,
+} from "./hooks/useValuationRisk";
+import type { ValuationRiskLevel } from "./utils/valuationRisk";
 import { useRealPortfolio } from "./hooks/useExchangeBalances";
 import {
   calculateRecommendedCashAllocation,
@@ -327,6 +332,29 @@ export default function App() {
         nvt: onchainData?.nvt,
       }),
     [market.fearGreed, onchainData, market.onchain, avgPremium]
+  );
+
+  // Valuation risk analysis
+  const valuationMarketData = useMemo(
+    () => ({
+      fearGreed: market.fearGreed?.value,
+      kimchiPremium: avgPremium,
+      prices: Object.fromEntries(
+        Object.entries(market.prices).map(([k, v]) => [k, { price: v.price }])
+      ),
+    }),
+    [market.fearGreed, avgPremium, market.prices]
+  );
+
+  const {
+    results: valuationResults,
+    btcResult: btcValuation,
+    loading: valuationLoading,
+  } = useValuationRisk(calc.assets, onchainData, valuationMarketData);
+
+  const portfolioValuation = usePortfolioValuationSummary(
+    valuationResults,
+    calc.assets
   );
 
   // Format helper
@@ -1248,6 +1276,706 @@ export default function App() {
       </div>
     </div>
   );
+
+  // ============================================
+  // Valuation Risk Tab
+  // ============================================
+
+  const VALUATION_RISK_COLORS: Record<ValuationRiskLevel, string> = {
+    UNDERVALUED: "#4ADE80",
+    FAIR_VALUE: "#60A5FA",
+    ELEVATED: "#FBBF24",
+    OVERVALUED: "#F97316",
+    EXTREME: "#EF4444",
+  };
+
+  const RISK_LEVEL_LABELS_KO: Record<ValuationRiskLevel, string> = {
+    UNDERVALUED: "저평가",
+    FAIR_VALUE: "적정가",
+    ELEVATED: "고평가 주의",
+    OVERVALUED: "고평가",
+    EXTREME: "극단적 고평가",
+  };
+
+  const ACTION_LABELS_KO: Record<string, string> = {
+    ACCUMULATE: "매수 기회",
+    HOLD: "보유 유지",
+    REDUCE: "일부 익절",
+    EXIT: "포지션 정리",
+  };
+
+  const ACTION_ICONS: Record<string, string> = {
+    ACCUMULATE: "📈",
+    HOLD: "⏸️",
+    REDUCE: "📉",
+    EXIT: "🚨",
+  };
+
+  const Valuation = () => {
+    if (valuationLoading || !btcValuation) {
+      return (
+        <div
+          style={{
+            textAlign: "center",
+            padding: 40,
+            color: COLORS.textMuted,
+          }}
+        >
+          밸류에이션 데이터 로딩 중...
+        </div>
+      );
+    }
+
+    const getScoreColor = (score: number) => {
+      if (score < 0.3) return COLORS.success;
+      if (score < 0.5) return COLORS.cash;
+      if (score < 0.7) return COLORS.warning;
+      return COLORS.danger;
+    };
+
+    return (
+      <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+        {/* Composite Score Card */}
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 16,
+            padding: 24,
+          }}
+        >
+          <div
+            style={{
+              display: "flex",
+              justifyContent: "space-between",
+              alignItems: "flex-start",
+              marginBottom: 20,
+            }}
+          >
+            <div>
+              <h3 style={{ fontSize: 15, marginBottom: 4 }}>
+                포트폴리오 밸류에이션 리스크
+              </h3>
+              <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                다중 시간대 기반 고평가 위험 분석
+              </span>
+            </div>
+            <div
+              style={{
+                padding: "6px 12px",
+                borderRadius: 8,
+                background: `${
+                  VALUATION_RISK_COLORS[portfolioValuation.weightedScore < 0.3 ? "UNDERVALUED" : portfolioValuation.weightedScore < 0.5 ? "FAIR_VALUE" : portfolioValuation.weightedScore < 0.7 ? "ELEVATED" : portfolioValuation.weightedScore < 0.85 ? "OVERVALUED" : "EXTREME"]
+                }20`,
+                color:
+                  VALUATION_RISK_COLORS[portfolioValuation.weightedScore < 0.3 ? "UNDERVALUED" : portfolioValuation.weightedScore < 0.5 ? "FAIR_VALUE" : portfolioValuation.weightedScore < 0.7 ? "ELEVATED" : portfolioValuation.weightedScore < 0.85 ? "OVERVALUED" : "EXTREME"],
+                fontSize: 11,
+                fontWeight: 600,
+              }}
+            >
+              신뢰도: {(portfolioValuation.avgConfidence * 100).toFixed(0)}%
+            </div>
+          </div>
+
+          <div
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 32,
+            }}
+          >
+            {/* Score Gauge */}
+            <div style={{ textAlign: "center", minWidth: 140 }}>
+              <svg viewBox="0 0 100 60" style={{ width: 140, height: 84 }}>
+                <defs>
+                  <linearGradient id="valGrad" x1="0%" y1="0%" x2="100%">
+                    <stop offset="0%" stopColor="#4ADE80" />
+                    <stop offset="40%" stopColor="#60A5FA" />
+                    <stop offset="60%" stopColor="#FBBF24" />
+                    <stop offset="80%" stopColor="#F97316" />
+                    <stop offset="100%" stopColor="#EF4444" />
+                  </linearGradient>
+                </defs>
+                <path
+                  d="M 10 50 A 40 40 0 0 1 90 50"
+                  fill="none"
+                  stroke={COLORS.border}
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                />
+                <path
+                  d="M 10 50 A 40 40 0 0 1 90 50"
+                  fill="none"
+                  stroke="url(#valGrad)"
+                  strokeWidth="10"
+                  strokeLinecap="round"
+                  strokeDasharray={`${portfolioValuation.weightedScore * 126} 126`}
+                />
+                <text
+                  x="50"
+                  y="38"
+                  textAnchor="middle"
+                  fill={COLORS.text}
+                  fontSize="18"
+                  fontWeight="bold"
+                  fontFamily="'JetBrains Mono'"
+                >
+                  {(portfolioValuation.weightedScore * 100).toFixed(0)}
+                </text>
+                <text
+                  x="50"
+                  y="52"
+                  textAnchor="middle"
+                  fill={COLORS.textMuted}
+                  fontSize="7"
+                >
+                  OVERVALUATION SCORE
+                </text>
+              </svg>
+              <div
+                style={{
+                  marginTop: 8,
+                  padding: "6px 16px",
+                  borderRadius: 20,
+                  background: `${getScoreColor(portfolioValuation.weightedScore)}20`,
+                  color: getScoreColor(portfolioValuation.weightedScore),
+                  fontSize: 12,
+                  fontWeight: 600,
+                  display: "inline-block",
+                }}
+              >
+                {RISK_LEVEL_LABELS_KO[portfolioValuation.weightedScore < 0.3 ? "UNDERVALUED" : portfolioValuation.weightedScore < 0.5 ? "FAIR_VALUE" : portfolioValuation.weightedScore < 0.7 ? "ELEVATED" : portfolioValuation.weightedScore < 0.85 ? "OVERVALUED" : "EXTREME"]}
+              </div>
+            </div>
+
+            {/* Risk Distribution */}
+            <div style={{ flex: 1 }}>
+              <div
+                style={{
+                  fontSize: 11,
+                  color: COLORS.textMuted,
+                  marginBottom: 12,
+                }}
+              >
+                자산별 리스크 분포
+              </div>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                {(
+                  [
+                    "UNDERVALUED",
+                    "FAIR_VALUE",
+                    "ELEVATED",
+                    "OVERVALUED",
+                    "EXTREME",
+                  ] as ValuationRiskLevel[]
+                ).map((level) => (
+                  <div
+                    key={level}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 10,
+                    }}
+                  >
+                    <div
+                      style={{
+                        width: 10,
+                        height: 10,
+                        borderRadius: 2,
+                        background: VALUATION_RISK_COLORS[level],
+                      }}
+                    />
+                    <span style={{ fontSize: 11, width: 80 }}>
+                      {RISK_LEVEL_LABELS_KO[level]}
+                    </span>
+                    <div
+                      style={{
+                        flex: 1,
+                        height: 6,
+                        background: COLORS.border,
+                        borderRadius: 3,
+                        overflow: "hidden",
+                      }}
+                    >
+                      <div
+                        style={{
+                          width: `${portfolioValuation.riskDistribution[level] || 0}%`,
+                          height: "100%",
+                          background: VALUATION_RISK_COLORS[level],
+                          borderRadius: 3,
+                        }}
+                      />
+                    </div>
+                    <span
+                      style={{
+                        fontSize: 11,
+                        fontFamily: "'JetBrains Mono'",
+                        width: 40,
+                        textAlign: "right",
+                      }}
+                    >
+                      {(portfolioValuation.riskDistribution[level] || 0).toFixed(0)}%
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Timeframe Cards */}
+        <div
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(3, 1fr)",
+            gap: 16,
+          }}
+        >
+          {btcValuation &&
+            (
+              [
+                { key: "shortTerm", data: btcValuation.shortTerm },
+                { key: "mediumTerm", data: btcValuation.mediumTerm },
+                { key: "longTerm", data: btcValuation.longTerm },
+              ] as const
+            ).map(({ key, data }) => (
+              <div
+                key={key}
+                style={{
+                  background: COLORS.card,
+                  border: `1px solid ${COLORS.border}`,
+                  borderRadius: 16,
+                  padding: 20,
+                }}
+              >
+                <div
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    marginBottom: 16,
+                  }}
+                >
+                  <h4 style={{ fontSize: 13, margin: 0 }}>{data.label}</h4>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "3px 8px",
+                      borderRadius: 4,
+                      background: `${VALUATION_RISK_COLORS[data.riskLevel]}30`,
+                      color: VALUATION_RISK_COLORS[data.riskLevel],
+                      fontWeight: 600,
+                    }}
+                  >
+                    {RISK_LEVEL_LABELS_KO[data.riskLevel]}
+                  </span>
+                </div>
+                <div
+                  style={{
+                    fontSize: 28,
+                    fontWeight: 700,
+                    fontFamily: "'JetBrains Mono'",
+                    color: VALUATION_RISK_COLORS[data.riskLevel],
+                    marginBottom: 12,
+                  }}
+                >
+                  {(data.overvaluationScore * 100).toFixed(0)}
+                </div>
+                <div
+                  style={{
+                    height: 6,
+                    background: COLORS.border,
+                    borderRadius: 3,
+                    overflow: "hidden",
+                    marginBottom: 12,
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${data.overvaluationScore * 100}%`,
+                      height: "100%",
+                      background: VALUATION_RISK_COLORS[data.riskLevel],
+                      borderRadius: 3,
+                    }}
+                  />
+                </div>
+                <div style={{ fontSize: 11, color: COLORS.textMuted }}>
+                  신뢰도: {(data.confidence * 100).toFixed(0)}%
+                </div>
+              </div>
+            ))}
+        </div>
+
+        {/* Key Drivers & Recommendation */}
+        <div
+          style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}
+        >
+          {/* Key Drivers */}
+          <div
+            style={{
+              background: COLORS.card,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 16,
+              padding: 20,
+            }}
+          >
+            <h4 style={{ fontSize: 13, marginBottom: 16 }}>핵심 영향 요인</h4>
+            <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+              {btcValuation?.keyDrivers.slice(0, 5).map((driver, i) => (
+                <div
+                  key={i}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 10,
+                    padding: "10px 12px",
+                    background: COLORS.darkAlt,
+                    borderRadius: 8,
+                  }}
+                >
+                  <span
+                    style={{
+                      fontSize: 14,
+                      width: 20,
+                    }}
+                  >
+                    {driver.direction === "bullish"
+                      ? "🟢"
+                      : driver.direction === "bearish"
+                        ? "🔴"
+                        : "🟡"}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, fontWeight: 500 }}>
+                      {driver.metric}
+                    </div>
+                    <div style={{ fontSize: 10, color: COLORS.textMuted }}>
+                      {driver.reason}
+                    </div>
+                  </div>
+                  <span
+                    style={{
+                      fontSize: 10,
+                      padding: "2px 6px",
+                      borderRadius: 4,
+                      background:
+                        driver.severity === "high"
+                          ? `${COLORS.danger}30`
+                          : driver.severity === "medium"
+                            ? `${COLORS.warning}30`
+                            : `${COLORS.success}30`,
+                      color:
+                        driver.severity === "high"
+                          ? COLORS.danger
+                          : driver.severity === "medium"
+                            ? COLORS.warning
+                            : COLORS.success,
+                      fontWeight: 600,
+                    }}
+                  >
+                    {driver.severity === "high"
+                      ? "높음"
+                      : driver.severity === "medium"
+                        ? "중간"
+                        : "낮음"}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Recommendation */}
+          <div
+            style={{
+              background: COLORS.card,
+              border: `1px solid ${COLORS.border}`,
+              borderRadius: 16,
+              padding: 20,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <h4 style={{ fontSize: 13, marginBottom: 16 }}>AI 추천</h4>
+            <div
+              style={{
+                flex: 1,
+                padding: 20,
+                borderRadius: 12,
+                background: `${
+                  btcValuation?.recommendation.action === "ACCUMULATE"
+                    ? COLORS.success
+                    : btcValuation?.recommendation.action === "HOLD"
+                      ? COLORS.cash
+                      : btcValuation?.recommendation.action === "REDUCE"
+                        ? COLORS.warning
+                        : COLORS.danger
+                }15`,
+                border: `1px solid ${
+                  btcValuation?.recommendation.action === "ACCUMULATE"
+                    ? COLORS.success
+                    : btcValuation?.recommendation.action === "HOLD"
+                      ? COLORS.cash
+                      : btcValuation?.recommendation.action === "REDUCE"
+                        ? COLORS.warning
+                        : COLORS.danger
+                }40`,
+                textAlign: "center",
+                display: "flex",
+                flexDirection: "column",
+                justifyContent: "center",
+                alignItems: "center",
+              }}
+            >
+              <div style={{ fontSize: 32, marginBottom: 8 }}>
+                {ACTION_ICONS[btcValuation?.recommendation.action || "HOLD"]}
+              </div>
+              <div
+                style={{
+                  fontSize: 18,
+                  fontWeight: 700,
+                  marginBottom: 8,
+                  color:
+                    btcValuation?.recommendation.action === "ACCUMULATE"
+                      ? COLORS.success
+                      : btcValuation?.recommendation.action === "HOLD"
+                        ? COLORS.cash
+                        : btcValuation?.recommendation.action === "REDUCE"
+                          ? COLORS.warning
+                          : COLORS.danger,
+                }}
+              >
+                {ACTION_LABELS_KO[btcValuation?.recommendation.action || "HOLD"]}
+              </div>
+              <div style={{ fontSize: 13, color: COLORS.textMuted }}>
+                {btcValuation?.recommendation.reason}
+              </div>
+              <div
+                style={{
+                  marginTop: 12,
+                  fontSize: 11,
+                  padding: "4px 10px",
+                  borderRadius: 20,
+                  background:
+                    btcValuation?.recommendation.urgency === "high"
+                      ? `${COLORS.danger}20`
+                      : btcValuation?.recommendation.urgency === "medium"
+                        ? `${COLORS.warning}20`
+                        : `${COLORS.success}20`,
+                  color:
+                    btcValuation?.recommendation.urgency === "high"
+                      ? COLORS.danger
+                      : btcValuation?.recommendation.urgency === "medium"
+                        ? COLORS.warning
+                        : COLORS.success,
+                }}
+              >
+                긴급도:{" "}
+                {btcValuation?.recommendation.urgency === "high"
+                  ? "높음"
+                  : btcValuation?.recommendation.urgency === "medium"
+                    ? "중간"
+                    : "낮음"}
+              </div>
+            </div>
+          </div>
+        </div>
+
+        {/* Asset Valuation Table */}
+        <div
+          style={{
+            background: COLORS.card,
+            border: `1px solid ${COLORS.border}`,
+            borderRadius: 16,
+            padding: 20,
+          }}
+        >
+          <h4 style={{ fontSize: 13, marginBottom: 16 }}>자산별 밸류에이션</h4>
+          <div style={{ overflowX: "auto" }}>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr 1fr 1fr 1fr",
+                gap: 1,
+                minWidth: 600,
+              }}
+            >
+              {/* Header */}
+              {["자산", "현재가", "리스크 레벨", "점수", "신뢰도", "추천"].map(
+                (h) => (
+                  <div
+                    key={h}
+                    style={{
+                      padding: "12px 14px",
+                      fontSize: 11,
+                      color: COLORS.textMuted,
+                      borderBottom: `1px solid ${COLORS.border}`,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {h}
+                  </div>
+                )
+              )}
+              {/* Rows */}
+              {calc.assets.map((asset) => {
+                const result = valuationResults[asset.symbol];
+                if (!result) return null;
+                return (
+                  <React.Fragment key={asset.id}>
+                    <div
+                      style={{
+                        padding: "14px",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                      }}
+                    >
+                      <span style={{ fontWeight: 600 }}>{asset.symbol}</span>
+                      <span style={{ fontSize: 11, color: COLORS.textMuted }}>
+                        {asset.name}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        padding: "14px",
+                        fontFamily: "'JetBrains Mono'",
+                        fontSize: 13,
+                      }}
+                    >
+                      {fmt(asset.currentPrice || 0)}
+                    </div>
+                    <div style={{ padding: "14px" }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          background: `${VALUATION_RISK_COLORS[result.riskLevel]}30`,
+                          color: VALUATION_RISK_COLORS[result.riskLevel],
+                          fontWeight: 600,
+                        }}
+                      >
+                        {RISK_LEVEL_LABELS_KO[result.riskLevel]}
+                      </span>
+                    </div>
+                    <div
+                      style={{
+                        padding: "14px",
+                        fontFamily: "'JetBrains Mono'",
+                        fontSize: 13,
+                        color: VALUATION_RISK_COLORS[result.riskLevel],
+                      }}
+                    >
+                      {(result.compositeScore * 100).toFixed(0)}
+                    </div>
+                    <div style={{ padding: "14px" }}>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: 6,
+                        }}
+                      >
+                        <div
+                          style={{
+                            width: 40,
+                            height: 4,
+                            background: COLORS.border,
+                            borderRadius: 2,
+                            overflow: "hidden",
+                          }}
+                        >
+                          <div
+                            style={{
+                              width: `${result.confidence.overall * 100}%`,
+                              height: "100%",
+                              background: COLORS.primary,
+                              borderRadius: 2,
+                            }}
+                          />
+                        </div>
+                        <span
+                          style={{
+                            fontSize: 11,
+                            fontFamily: "'JetBrains Mono'",
+                          }}
+                        >
+                          {(result.confidence.overall * 100).toFixed(0)}%
+                        </span>
+                        {result.confidence.isEstimated && (
+                          <span
+                            style={{
+                              fontSize: 9,
+                              color: COLORS.textMuted,
+                              background: COLORS.darkAlt,
+                              padding: "2px 4px",
+                              borderRadius: 3,
+                            }}
+                          >
+                            추정
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                    <div style={{ padding: "14px" }}>
+                      <span
+                        style={{
+                          fontSize: 10,
+                          padding: "3px 8px",
+                          borderRadius: 4,
+                          background:
+                            result.recommendation.action === "ACCUMULATE"
+                              ? `${COLORS.success}20`
+                              : result.recommendation.action === "HOLD"
+                                ? `${COLORS.cash}20`
+                                : result.recommendation.action === "REDUCE"
+                                  ? `${COLORS.warning}20`
+                                  : `${COLORS.danger}20`,
+                          color:
+                            result.recommendation.action === "ACCUMULATE"
+                              ? COLORS.success
+                              : result.recommendation.action === "HOLD"
+                                ? COLORS.cash
+                                : result.recommendation.action === "REDUCE"
+                                  ? COLORS.warning
+                                  : COLORS.danger,
+                          fontWeight: 600,
+                        }}
+                      >
+                        {ACTION_LABELS_KO[result.recommendation.action]}
+                      </span>
+                    </div>
+                  </React.Fragment>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+
+        {/* Info Guide */}
+        <div
+          style={{
+            padding: 14,
+            background: COLORS.darkAlt,
+            borderRadius: 10,
+            display: "flex",
+            gap: 20,
+            fontSize: 11,
+            color: COLORS.textMuted,
+          }}
+        >
+          <div>
+            <strong style={{ color: COLORS.text }}>점수 해석:</strong> 0-30
+            저평가 | 30-50 적정 | 50-70 주의 | 70-85 고평가 | 85+ 극단적 고평가
+          </div>
+          <div>
+            <strong style={{ color: COLORS.text }}>시간대:</strong> 단기 20% +
+            중기 35% + 장기 45% = 종합 점수
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   // ============================================
   // Rebalance Tab
@@ -2310,6 +3038,7 @@ export default function App() {
             {[
               ["overview", "개요"],
               ["macro", "시장분석"],
+              ["valuation", "밸류에이션"],
               ["rebalance", "리밸런싱"],
             ].map(([k, v]) => (
               <button
@@ -2353,6 +3082,7 @@ export default function App() {
           <>
             {tab === "overview" && <Overview />}
             {tab === "macro" && <Macro />}
+            {tab === "valuation" && <Valuation />}
             {tab === "rebalance" && <Rebalance />}
           </>
         )}
